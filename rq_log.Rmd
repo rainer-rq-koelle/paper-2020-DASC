@@ -1,0 +1,28 @@
+---
+title: "Workflow Learning Log"
+author: "RQ"
+date: "16/04/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+This is R Markdown document is my learning log for the DASC paper exercise. 
+
+## Set-up
+
+* create repo on github and initialise it with README and LICENSE
+* launch new project in RStudio with github support; edit README and check all works
+* packages installed (classical tidyverse, here)
+* put initial folder structure in place
+
+```{r}
+knitr::include_graphics(here::here("figures","project-start-folder-structure.png"))
+```
+
+* launch project web-site
+  * initial site.yml
