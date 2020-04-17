@@ -1,8 +1,14 @@
 ---
 title: "Index"
 author: "RQ"
-date: "16/04/2020"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
-My test start page
+# Operational Performance at Airports: Opening Doors by Using Open Data
+
+This website accompanies the paper **Operational Performance at Airports: Opening Doors by Using Open Data** to be presented at the DASC2020 conference.
+
+As an initial step the trajectory data had been downloaded from Opensky Network.
+A further comparison data set is extracted from EUROCONTROL's airport operator data flow.
+The steps and process is presented in 

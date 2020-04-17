@@ -1,10 +1,11 @@
 name: "Rainer Koelle"
 output_dir: "docs"
+exclude: ["docs", "data-src","analysis"]
 navbar:
   title: "Paper"
   left:
-    - text: "Writing"
-      href: research.html
+    - text: "Data Preparation"
+      href: data.html
     - text: "Speaking"
       href: talks.html
     - text: "Programming"

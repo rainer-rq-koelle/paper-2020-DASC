@@ -26,3 +26,7 @@ knitr::include_graphics(here::here("figures","project-start-folder-structure.png
 
 * launch project web-site
   * initial site.yml
+  * launch index.Rmd 
+* check _site.yml exclude to avoid certain files/folders to be built
+
+TODO - set-up site before project folders ==> avoids building subfolder (and/or check exclude)
