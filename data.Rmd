@@ -1,11 +1,85 @@
 ---
-title: "Data Preparation"
+title: Data Preparation
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+library(magrittr)
 ```
 
-# Data Preparation
-
 This page documents the data preparatory action.
+
+## Download Airport Lookup Reference Table
+
+Aiport reference data is downloaded from OpenAirports.com.
+
+```{r}
+# airport look-up table
+apt_lu <- "./data/apt_lu.csv"
+
+if(!file.exists(apt_lu)){
+  message("Downloading airport reference table from OpenAirports.com.")
+  url    <- "https://ourairports.com/data/airports.csv"
+  apt_lu <- readr::read_csv(url)
+  readr::write_csv(apt_lu, "./data/apt_lu.csv")
+}else{
+  message("Loading airport reference table from OpenAirports.com")
+  apt_lu <- readr::read_csv("./data/apt_lu.csv")
+}
+```
+
+Set-up the table of refernces for this study.
+
+```{r}
+study_apts <- apt_lu %>%
+  dplyr::filter(ident %in% c("LSZH", "EGKK", "EDDF"))
+```
+
+* ident ICAO location indicator
+* latitude_deg latitude of the aerodrome reference point
+* longitude_deg longitude of the aerodrome reference point
+
+## Download ADSB State-Vectors from Opensky Network
+
+For this paper state vectors for the following airports are downloaded:
+
+* LSZH Zurich
+
+With a focus to the airport environment and the associated ICAO GANP KPIs we (try to) download data within a bounding box of 100NM.
+The bounding_box function is documented in R/bounding_box.R.
+
+```{r}
+source("./R/bounding_box.R")
+
+apt <- study_apts %>% dplyr::filter(ident == "LSZH") %>% 
+  dplyr::select(
+     ICAO = ident
+    , LON = longitude_deg
+    , LAT = latitude_deg
+    ,ELEV = elevation_ft
+    )
+
+apt_bb <- bounding_box(lat = apt$LAT, lon = apt$LON, dist = 20)
+# coerce apt_bb matrix into vector c(LONmin, LONmax, LATmin, LATmax)
+apt_bb <- apt_bb %>% t() %>% as.vector()
+# apply naming convention for Opensky Network
+names(apt_bb) <- c("xmin","xmax","ymin","ymax")
+```
+
+Establish session with Opensky Network Server
+
+```{r}
+source("./R/osn_query_apt_bbox.R")
+
+# account details stored in environment
+rq_usr <- "espin"     #Sys.getenv("osn_usr")
+rq_pw  <- "Losvce1300"  #Sys.getenv("osn_pw")
+
+# establish session with Opensky Network
+session <- osn::osn_connect(usr = rq_usr, passwd = rq_pw)
+
+start_date <- lubridate::ymd_hms("2019_10_01 09:00:00", tz = "UTC")
+df <- query_osn(start_date, session, apt_bb)
+```
+
+c(xmin = 7.536746, xmax = 9.604390, ymin = 49.36732, ymax = 50.69920)

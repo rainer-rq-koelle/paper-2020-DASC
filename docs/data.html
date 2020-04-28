@@ -269,15 +269,15 @@ $(document).ready(function () {
         <span class="icon-bar"></span>
         <span class="icon-bar"></span>
       </button>
-      <a class="navbar-brand" href="index.html">Paper</a>
+      <a class="navbar-brand" href="index.html">DASC2020 Paper</a>
     </div>
     <div id="navbar" class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
         <li>
-  <a href="data.html">Data Preparation</a>
+  <a href="data.html">Data &lt;/br&gt; Preparation</a>
 </li>
 <li>
-  <a href="talks.html">Speaking</a>
+  <a href="20-trajproc.html">Trajectory \n Processing</a>
 </li>
 <li>
   <a href="software.html">Programming</a>
@@ -325,9 +325,66 @@ $(document).ready(function () {
 </div>
 
 
-<div id="data-preparation" class="section level1">
-<h1>Data Preparation</h1>
 <p>This page documents the data preparatory action.</p>
+<div id="download-airport-lookup-reference-table" class="section level2">
+<h2>Download Airport Lookup Reference Table</h2>
+<p>Aiport reference data is downloaded from OpenAirports.com.</p>
+<pre class="r"><code># airport look-up table
+apt_lu &lt;- &quot;./data/apt_lu.csv&quot;
+
+if(!file.exists(apt_lu)){
+  message(&quot;Downloading airport reference table from OpenAirports.com.&quot;)
+  url    &lt;- &quot;https://ourairports.com/data/airports.csv&quot;
+  apt_lu &lt;- readr::read_csv(url)
+  readr::write_csv(apt_lu, &quot;./data/apt_lu.csv&quot;)
+}else{
+  message(&quot;Loading airport reference table from OpenAirports.com&quot;)
+  apt_lu &lt;- readr::read_csv(&quot;./data/apt_lu.csv&quot;)
+}</code></pre>
+<p>Set-up the table of refernces for this study.</p>
+<pre class="r"><code>study_apts &lt;- apt_lu %&gt;%
+  dplyr::filter(ident %in% c(&quot;LSZH&quot;, &quot;EGKK&quot;, &quot;EDDF&quot;))</code></pre>
+<ul>
+<li>ident ICAO location indicator</li>
+<li>latitude_deg latitude of the aerodrome reference point</li>
+<li>longitude_deg longitude of the aerodrome reference point</li>
+</ul>
+</div>
+<div id="download-adsb-state-vectors-from-opensky-network" class="section level2">
+<h2>Download ADSB State-Vectors from Opensky Network</h2>
+<p>For this paper state vectors for the following airports are downloaded:</p>
+<ul>
+<li>LSZH Zurich</li>
+</ul>
+<p>With a focus to the airport environment and the associated ICAO GANP KPIs we (try to) download data within a bounding box of 100NM. The bounding_box function is documented in R/bounding_box.R.</p>
+<pre class="r"><code>source(&quot;./R/bounding_box.R&quot;)
+
+apt &lt;- study_apts %&gt;% dplyr::filter(ident == &quot;LSZH&quot;) %&gt;% 
+  dplyr::select(
+     ICAO = ident
+    , LON = longitude_deg
+    , LAT = latitude_deg
+    ,ELEV = elevation_ft
+    )
+
+apt_bb &lt;- bounding_box(lat = apt$LAT, lon = apt$LON, dist = 20)
+# coerce apt_bb matrix into vector c(LONmin, LONmax, LATmin, LATmax)
+apt_bb &lt;- apt_bb %&gt;% t() %&gt;% as.vector()
+# apply naming convention for Opensky Network
+names(apt_bb) &lt;- c(&quot;xmin&quot;,&quot;xmax&quot;,&quot;ymin&quot;,&quot;ymax&quot;)</code></pre>
+<p>Establish session with Opensky Network Server</p>
+<pre class="r"><code>source(&quot;./R/osn_query_apt_bbox.R&quot;)
+
+# account details stored in environment
+rq_usr &lt;- &quot;espin&quot;     #Sys.getenv(&quot;osn_usr&quot;)
+rq_pw  &lt;- &quot;Losvce1300&quot;  #Sys.getenv(&quot;osn_pw&quot;)
+
+# establish session with Opensky Network
+session &lt;- osn::osn_connect(usr = rq_usr, passwd = rq_pw)
+
+start_date &lt;- lubridate::ymd_hms(&quot;2019_10_01 09:00:00&quot;, tz = &quot;UTC&quot;)
+df &lt;- query_osn(start_date, session, apt_bb)</code></pre>
+<p>c(xmin = 7.536746, xmax = 9.604390, ymin = 49.36732, ymax = 50.69920)</p>
 </div>
 
 

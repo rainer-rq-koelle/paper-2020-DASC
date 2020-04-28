@@ -1,13 +1,13 @@
 name: "Rainer Koelle"
 output_dir: "docs"
-exclude: ["docs", "data-src","analysis"]
+exclude: ["data-src","analysis", "R"]
 navbar:
-  title: "Paper"
+  title: "DASC2020 Paper"
   left:
     - text: "Data Preparation"
       href: data.html
-    - text: "Speaking"
-      href: talks.html
+    - text: "Trajectory Processing"
+      href: 20-trajproc.html
     - text: "Programming"
       href: software.html
     - text: "Teaching"

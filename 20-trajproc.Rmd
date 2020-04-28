@@ -1,0 +1,186 @@
+---
+title: "Trajectory Processing"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+`%>%` <- magrittr::`%>%`
+library(tidyverse)
+library(plotly)
+```
+
+A set of test data has been downloaded from Opensky Network. 
+With a view to produce the analytic data, the following steps are required:
+
+* read in trajectory, clean spikes, and complement missing items;
+* apply heuristics to define key movement timestamps, e.g. AOBT, ATOT;
+* trajectory simplification (maybe before - tbd --> Schultz et al., 2020/2019)
+
+## Check Coverage
+
+For comparison reasons, we read in data from the APDF to check on coverage and movement association.
+
+```{r}
+study_apt  <- "LSZH"
+check_apdf <- paste0("./data/", study_apt, "_APDF_CHECK.csv")
+col_specs <- readr::cols_only(
+   AP_C_FLTID = readr::col_character()
+  ,AP_C_REG   = readr::col_character()
+  ,ADEP_ICAO  = readr::col_character()
+  ,ADES_ICAO  = readr::col_character()
+  ,AP_C_RWY   = readr::col_character()
+  ,AP_C_STND  = readr::col_character()
+  ,MVT_TIME_UTC  = readr::col_character()
+  ,BLOCK_TIME_UTC= readr::col_character()
+  ,SCHED_TIME_UTC= readr::col_character()
+  ,ARCTYP     = readr::col_character()
+  ,AC_CLASS   = readr::col_character()
+  ,SRC_PHASE  = readr::col_character()
+)
+### default col_character: lubridate::parse_date_time(AIBT, orders = c("Ymd HMS","dmY HMS")
+if(!file.exists(check_apdf)){
+  message(paste0("Reading in APDF Fact Table for ", study_apt))
+  fn   <- paste0("../__DATA/", study_apt,"/", study_apt, "_2019_FACT.csv") 
+  apdf <- readr::read_csv2(fn, col_types = col_specs) %>%
+    mutate(
+      MVT_TIME_UTC = lubridate::parse_date_time(MVT_TIME_UTC, orders = c("dmY HMS"))
+   ,BLOCK_TIME_UTC = lubridate::parse_date_time(BLOCK_TIME_UTC, orders = c("dmY HMS"))
+   ,SCHED_TIME_UTC = lubridate::parse_date_time(SCHED_TIME_UTC, orders = c("dmy HMS"))
+    )
+  readr::write_csv(apdf, check_apdf)
+}else{
+  message(paste0("loading APDF reference for ", study_apt))
+  apdf <- readr::read_csv(check_apdf, col_types = readr::cols(.default = "c")) %>%
+    dplyr::mutate(
+      MVT_TIME_UTC = lubridate::parse_date_time(MVT_TIME_UTC, orders = c("Ymd HMS"))
+   ,BLOCK_TIME_UTC = lubridate::parse_date_time(BLOCK_TIME_UTC, orders = c("Ymd HMS"))
+   ,SCHED_TIME_UTC = lubridate::parse_date_time(SCHED_TIME_UTC, orders = c("Ymd HMS"))
+      )
+}
+```
+
+For the initial development we are working with the data for 1. October.
+
+```{r}
+start_date = as.POSIXct("2019-10-01 00:00:00", tz="UTC")
+end_date  <- start_date + lubridate::days(1)
+
+apdf2 <- apdf %>% 
+  dplyr::filter(BLOCK_TIME_UTC >= start_date & BLOCK_TIME_UTC < end_date)
+```
+
+Let's do a quick visual check with ggplot for traffic binned to UTC hours on the 1. October 2019.
+
+```{r}
+tfc_hr <- apdf2 %>% 
+  mutate(BIN = lubridate::floor_date(BLOCK_TIME_UTC, unit = "hour")
+         ,HR = lubridate::hour(BLOCK_TIME_UTC)) %>%
+  group_by(SRC_PHASE, BIN, HR) %>%
+  summarise(FLIGHTS = n())
+
+g <- ggplot(data = tfc_hr, mapping = aes(x = BIN, y = FLIGHTS, colour = SRC_PHASE)) +
+  geom_step() +
+  theme_minimal()
+ggplotly(g) %>%
+  layout(hovermode = "x")
+#g
+```
+
+There is a departure peak (AOBT) between 0900 and 1200hrs UTC.
+
+```{r}
+read_data <- function(.pattern, .path, .df=TRUE, .cols){
+  data_files <- list.files(path = .path, pattern = .pattern )
+  file_names <- paste0(.path,"/", data_files)
+  
+  if(.df){
+    ds <- file_names %>% purrr::map_dfr(.f=read_csv, col_types = .cols)
+  }else{
+    ds <- file_names %>% purrr::map(.f=read_csv)
+  }
+  return(ds)
+}
+
+col_specs <- cols(
+  time = col_double(),
+  icao24 = col_character(),
+  lat = col_double(),
+  lon = col_double(),
+  velocity = col_double(),
+  heading = col_double(),
+  vertrate = col_double(),
+  callsign = col_character(),
+  onground = col_logical(),
+  alert = col_logical(),
+  spi = col_logical(),
+  squawk = col_double(),
+  baroaltitude = col_double(),
+  geoaltitude = col_double(),
+  lastposupdate = col_double(),
+  lastcontact = col_double(),
+  hour = col_double()
+)
+
+ds <- read_data(.pattern = "osn_LSZH_R20_", .path = "./data-src", .cols=col_specs) 
+```
+
+Opensky Network data expresses the timestamps in Unix epochs.
+
+```{r}
+ds <- ds %>% mutate(time = lubridate::as_datetime(time, tz="UTC"))
+```
+
+Let's pick some test trajectories during the peak period (0900 and 1200hrs UTC).
+For this we allow read-outs 5 minutes prior and after the peak period.
+
+```{r}
+pick_start <- as.POSIXct("2019-10-01 08:55:00", tz = "UTC")
+pick_end   <- as.POSIXct("2019-10-01 12:05:00", tz = "UTC")
+
+pick <- ds %>% 
+  filter(time >= pick_start, time <= pick_end)
+
+# summary stats
+pick_stats <- pick %>% 
+  group_by(icao24) %>%
+  summarise(HITS = n(), ONG = sum(onground, na.rm = TRUE), ONG_P = ONG / HITS)
+```
+
+From the aforementioned APDF data feed we extract random departures during the peak horizon.
+
+```{r}
+some_deps <- apdf2 %>%
+  filter(ADEP_ICAO == "LSZH", BLOCK_TIME_UTC >= pick_start, BLOCK_TIME_UTC <= pick_end)
+```
+
+> some_deps %>% arrange(BLOCK_TIME_UTC) %>% sample_n(5) %>% select(FLTID = AP_C_FLTID, REG = AP_C_REG, ADEP = ADEP_ICAO, ADES = ADES_ICAO, AOBT = BLOCK_TIME_UTC, ATOT = MVT_TIME_UTC)
+# A tibble: 5 x 6
+  FLTID   REG   ADEP  ADES  AOBT                ATOT               
+  <chr>   <chr> <chr> <chr> <dttm>              <dttm>             
+1 DLH1187 DAIWH LSZH  EDDF  2019-10-01 09:25:15 2019-10-01 09:34:35
+2 BAW711  GEUXE LSZH  EGLL  2019-10-01 09:38:00 2019-10-01 09:52:00
+3 ATL3Z   DINOB LSZH  EBKT  2019-10-01 09:54:39 2019-10-01 09:58:16
+4 SWR1662 HBIJN LSZH  LIPZ  2019-10-01 11:21:00 2019-10-01 11:37:15
+5 VLG8349 ECNEA LSZH  LEPA  2019-10-01 11:33:46 2019-10-01 11:52:38
+
+```{r}
+fltids <- c("DLH1187","BAW711","ATL3Z","SWR1662","VLG8349")
+
+trjs <- ds %>% select(icao24, callsign) %>% filter(callsign %in% fltids) %>%
+  unique()
+trjs
+```
+
+```{r}
+trjs <- ds %>% filter(icao24 %in% c("400afd", "346185"))
+
+g <- ggplot() + 
+  geom_point(data = trjs, mapping = aes(x = lon, y = lat, colour = icao24))+
+  theme_minimal() +
+  coord_map()
+g
+```
+```{r}
+
+```
+
