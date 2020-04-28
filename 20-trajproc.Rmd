@@ -178,7 +178,7 @@ g <- ggplot() +
   geom_point(data = trjs, mapping = aes(x = lon, y = lat, colour = icao24))+
   theme_minimal() +
   coord_map()
-g
+ggplotly(g)
 ```
 ```{r}
 
