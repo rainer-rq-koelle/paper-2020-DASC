@@ -175,12 +175,95 @@ trjs
 trjs <- ds %>% filter(icao24 %in% c("400afd", "346185"))
 
 g <- ggplot() + 
-  geom_point(data = trjs, mapping = aes(x = lon, y = lat, colour = icao24))+
+  geom_point(data = trjs, mapping = aes(x = lon, y = lat, colour = callsign))+
   theme_minimal() +
   coord_map()
 ggplotly(g)
 ```
-```{r}
 
+Vertical Profile
+
+```{r}
+plot_ly(data = trjs) %>%
+  add_lines(x = ~time, y = ~ geoaltitude, color = ~callsign)
 ```
+
+The vertical profile shows spikes for the altitude readout of both flights.
+The departure phase seems to be well tracked (without spikes).
+It follows that the callsign field can be used to separate successive flights of an aircraft (= same ICAO-24bit address).    
+Note: While a callsign change is indicative for successive flights, there are more characteristics. For example, aircraft remains on the ground (for a sufficient time). Touch-and-go or low approaches can be detected based on same icao24, virtually no ground time, and then departing leg.
+
+Let's analyse the trajectory 
+
+```{r}
+#' Estimate airport flight phase
+#'
+#' Utility function to estimate the flight phase (i.e. arrival or departure)
+
+est_apt_flt_phase <- function(.trjs){
+  df <- .trjs
+  df <- df %>% group_by(icao24, callsign) %>% 
+    summarise(
+       HITS = n()
+      ,ONG  = sum(onground, na.rm = TRUE)
+      ,FIRST= min(time)
+      ,FIRST_ALT = geoaltitude[time == FIRST]
+      ,LAST = max(time)
+      ,LAST_ALT  = geoaltitude[time == LAST]
+      ) %>%
+    mutate(
+       DUR_COV = difftime(LAST, FIRST, units = "mins")
+      ,ALT_CHG = case_when(
+         is.na(FIRST_ALT) & LAST_ALT  >= 500  ~ "DEP"
+        ,is.na(LAST_ALT)  & FIRST_ALT >= 500  ~ "ARR"
+        ,FIRST_ALT >= 3000 & LAST_ALT >= 3000 ~ "OVR"
+        ,TRUE ~ "DUNNO"
+      ) 
+    )
+  return(df)
+}
+
+trjs %>% est_apt_flt_phase()
+```
+
+Note: TO-DO ... need to clean trajectories for NAs and altitude.
+
+Apply heuristic to dataset:
+
+```{r}
+flt_table <- ds %>% est_apt_flt_phase()
+flt_table
+```
+
+Special DUNNO cases --> FXT401, MMD6449  ==> multi-leg flights (same icao24 and same callsign)
+
+```{r}
+tmp <- ds %>% filter(callsign %in% c("FXT401","MMD6449","AHO253Q","VJT486","NJE720G","PEA301","HBZUR","DUKE15","PEG81"))
+plot_ly(data = tmp) %>%
+  add_lines(x = ~time, y = ~ geoaltitude, color = ~callsign)
+```
+
+Exclude obvious non-departures or non-arrivals
+
+think about this more careful
+
+```{}
+#' Identify airport traffic
+#'
+#' Utility function to remove non airport related traffic without using
+#' distance
+
+trim_apt_tfc <- function(.trjs){
+  df <- .trjs
+  # filter obvious non-arriving or non-departing traffic
+  df <- df %>% 
+  
+}
+```
+
+
+
+
+
+
 
